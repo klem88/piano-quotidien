@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Piano quotidien</title>
+  <meta name="description" content="Une fiche de 10 minutes par jour pour progresser au piano : lecture, oreille, rythme, harmonie.">
+  <meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icone.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,650&family=Atkinson+Hyperlegible:wght@400;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="entete">
+    <h1>Piano quotidien</h1>
+    <span id="etat-sync" class="sync" aria-live="polite"></span>
+  </header>
+  <main id="vue"></main>
+  <nav class="onglets" aria-label="Navigation">
+    <button data-vue="fiche" class="actif"><span aria-hidden="true">✦</span>Aujourd'hui</button>
+    <button data-vue="progres"><span aria-hidden="true">◔</span>Progrès</button>
+    <button data-vue="historique"><span aria-hidden="true">☰</span>Fiches</button>
+    <button data-vue="reglages"><span aria-hidden="true">⚙</span>Réglages</button>
+  </nav>
+  <script src="https://cdn.jsdelivr.net/npm/abcjs@6/dist/abcjs-basic-min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
