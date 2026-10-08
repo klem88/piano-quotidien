@@ -168,28 +168,78 @@ function midi(nom) {
   for (const c of m[2]) v += c === '#' ? 1 : -1;
   return 12 * (parseInt(m[3], 10) + 1) + v;
 }
-function jouerEtapes(etapes, duree = 1) {
+// Les sons d'oreille sont joués avec de vrais échantillons de piano (ceux d'abcjs).
+// Sans réseau, on retombe sur le synthétiseur maison.
+const synthsPrets = new Map();
+let synthOreille = null;
+function versAbc(nom) {
+  const m = /^([A-G])([#b]*)(-?\d)$/.exec(nom);
+  if (!m) return 'C';
+  // bécarre explicite : sans barres de mesure, une altération resterait active jusqu'à la fin
+  const alt = m[2] ? m[2].replace(/#/g, '^').replace(/b/g, '_') : '=';
+  const oct = parseInt(m[3], 10);
+  return alt + (oct >= 5 ? m[1].toLowerCase() + "'".repeat(oct - 5) : m[1] + ','.repeat(4 - oct));
+}
+function abcEtapes(etapes, duree) {
+  const corps = etapes.map((notes, i) => {
+    const d = i === etapes.length - 1 ? 3 : 1; // la dernière étape résonne plus longtemps
+    return notes.length ? `[${notes.map(versAbc).join('')}]${d}` : `z${d}`;
+  }).join(' ');
+  return `X:1\nL:1/4\nQ:1/4=${Math.round(60 / duree)}\nK:C\n${corps} |]`;
+}
+async function jouerEtapes(etapes, duree = 1) {
   const c = audio();
-  if (sortie) { sortie.gain.setTargetAtTime(0, c.currentTime, 0.02); }
-  sortie = c.createGain(); sortie.gain.value = 0.9; sortie.connect(c.destination);
+  if (synthOreille) { synthOreille.stop(); synthOreille = null; }
+  if (sortie) { sortie.gain.setTargetAtTime(0, c.currentTime, 0.02); sortie = null; }
+  if (window.ABCJS?.synth?.supportsAudio()) {
+    try {
+      const abc = abcEtapes(etapes, duree);
+      let s = synthsPrets.get(abc);
+      if (!s) {
+        const cache = document.getElementById('abc-cache') || document.body.appendChild(h('div', { id: 'abc-cache', hidden: true }));
+        const tune = ABCJS.renderAbc(cache, abc)[0];
+        s = new ABCJS.synth.CreateSynth();
+        await s.init({ audioContext: c, visualObj: tune, options: { program: 0 } });
+        await s.prime();
+        synthsPrets.set(abc, s);
+      }
+      s.start();
+      synthOreille = s;
+      return;
+    } catch { /* échantillons indisponibles : synthétiseur maison */ }
+  }
+  synthEtapes(etapes, duree);
+}
+function synthEtapes(etapes, duree = 1) {
+  const c = audio();
+  const comp = c.createDynamicsCompressor();
+  comp.connect(c.destination);
+  sortie = c.createGain(); sortie.gain.value = 1; sortie.connect(comp);
   const t0 = c.currentTime + 0.06;
   etapes.forEach((notes, i) => {
     const t = t0 + i * duree;
-    const vel = 0.22 / Math.sqrt(Math.max(1, notes.length));
-    for (const n of notes) note(c, sortie, t, 440 * 2 ** ((midi(n) - 69) / 12), Math.max(duree, 0.7), vel);
+    const vel = 0.25 / Math.sqrt(Math.max(1, notes.length));
+    const tenue = i === etapes.length - 1 ? Math.max(duree, 1.5) : Math.max(duree, 0.7);
+    for (const n of notes) note(c, sortie, t, 440 * 2 ** ((midi(n) - 69) / 12), tenue, vel);
   });
 }
 function note(c, dest, t, f, duree, vel) {
-  // timbre de piano simplifié : quelques partiels qui s'éteignent d'autant plus vite qu'ils sont aigus
-  [[1, 1], [2, 0.45], [3, 0.2], [4, 0.1]].forEach(([k, a]) => {
+  // Timbre de piano simplifié, riche en harmoniques : un petit haut-parleur ne rend pas la
+  // fondamentale d'une note grave, mais l'oreille la reconstruit à partir des harmoniques.
+  const grave = Math.min(1, Math.max(0, (300 - f) / 220)); // 0 au-dessus de 300 Hz, 1 vers 80 Hz
+  for (let k = 1; k <= 8; k++) {
+    const fk = f * k * (1 + 0.0004 * k * k); // légère inharmonicité des cordes
+    if (fk > 9000) break;
+    const a = (1 / k) * (k === 1 ? 1 - 0.4 * grave : 1 + 0.9 * grave * (k <= 5 ? 1 : 0.4));
     const o = c.createOscillator(), g = c.createGain();
-    o.frequency.value = f * k; o.type = 'sine';
-    const fin = t + duree * (1.6 / k) + 0.3;
+    o.frequency.value = fk; o.type = 'sine';
+    const fin = t + duree * (1.8 / Math.sqrt(k)) + 0.3;
     g.gain.setValueAtTime(0, t);
-    g.gain.linearRampToValueAtTime(vel * a, t + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0008, fin);
+    g.gain.linearRampToValueAtTime(vel * a, t + 0.006);
+    g.gain.exponentialRampToValueAtTime(vel * a * 0.35, t + 0.25);
+    g.gain.exponentialRampToValueAtTime(0.0006, fin);
     o.connect(g); g.connect(dest); o.start(t); o.stop(fin + 0.05);
-  });
+  }
 }
 
 // Lecture d'une partition ABC avec abcjs (après avoir joué, pour vérifier)
