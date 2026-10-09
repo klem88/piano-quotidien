@@ -262,6 +262,23 @@ function rendreAbc(conteneur, abc) {
   })[0];
 }
 
+// Tempo et nombre de temps par mesure lus dans l'en-tête ABC (Q: et M:)
+function tempoDeAbc(abc = '') {
+  const q = /^Q:[^\n]*?(\d+)\/(\d+)\s*=\s*(\d+)/m.exec(abc);
+  const qSimple = q ? null : /^Q:\s*(\d+)\s*$/m.exec(abc);
+  const tempo = q ? parseInt(q[3], 10) : qSimple ? parseInt(qSimple[1], 10) : null;
+  const unite = q ? parseInt(q[1], 10) / parseInt(q[2], 10) : 1 / 4;
+  const m = /^M:\s*(\S+)/m.exec(abc);
+  let mesure = null;
+  if (m) {
+    if (m[1] === 'C') mesure = 1;
+    else if (m[1] === 'C|') mesure = 1;
+    else { const f = /^(\d+)\/(\d+)$/.exec(m[1]); if (f) mesure = parseInt(f[1], 10) / parseInt(f[2], 10); }
+  }
+  const temps = mesure ? Math.max(1, Math.round(mesure / unite)) : null;
+  return { tempo, temps };
+}
+
 // Métronome
 function metronome(tempoInitial, temps) {
   let tempo = tempoInitial, minuterie = null, prochain = 0, battement = 0;
@@ -411,8 +428,11 @@ function vueJeu(bloc, numero, b, genre) {
     } }, '⏱ 1 min d’observation');
     outils.append(btn);
   }
-  if (genre === 'rythme') {
-    const m = metronome(bloc.tempo || 72, bloc.temps || 4);
+  // Métronome réglé sur le tempo demandé (champ tempo du bloc, sinon Q: et M: de la partition)
+  const mesure = tempoDeAbc(bloc.abc);
+  const tempo = bloc.tempo || mesure.tempo;
+  if (genre === 'rythme' || (bloc.abc && tempo) || bloc.tempo) {
+    const m = metronome(tempo || 72, bloc.temps || mesure.temps || 4);
     arretsSurNavigation.push(m.arreter);
     sec.append(m);
   }
