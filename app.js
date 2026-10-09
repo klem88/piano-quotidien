@@ -18,6 +18,7 @@ const AXES = {
   ryt: { nom: 'Rythme', icone: '🥁' },
   har: { nom: 'Harmonie', icone: '🃏' },
   cla: { nom: 'Clavier', icone: '🎹' },
+  mus: { nom: 'Pièce', icone: '🎶' },
 };
 const AUTOEVAL_STANDARD = [{ id: 'global', question: 'Comment ça s’est passé ?', options: [['Sans hésiter', 1], ['Avec hésitations', 0.6], ['Pas réussi', 0.2]] }];
 
