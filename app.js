@@ -498,17 +498,45 @@ function vueAccueilFiche() {
       h('p', {}, 'Pour commencer, relie la page à ton dépôt de suivi (une seule fois sur ce téléphone).'),
       h('button', { class: 'bouton principal', onclick: () => aller('reglages') }, 'Configurer'));
   }
-  if (etat.ficheOuverte != null) return vueFiche(etat.ficheOuverte, faits().has(etat.ficheOuverte));
-  const n = ficheDuJour();
-  if (n == null) {
-    const enAttente = store.get(CLE_FILE, []).length;
+  if (etat.ficheOuverte != null) {
+    return h('div', {},
+      h('button', { class: 'bouton', style: 'margin-top:6px', onclick: () => { etat.ficheOuverte = null; afficher(); window.scrollTo(0, 0); } }, '← Choisir une autre fiche'),
+      vueFiche(etat.ficheOuverte, faits().has(etat.ficheOuverte)));
+  }
+  const enAttente = store.get(CLE_FILE, []).length;
+  const noteAttente = enAttente ? h('p', { class: 'note-douce' }, `${enAttente} résultat(s) en attente d’envoi (réseau).`) : null;
+  const choix = prochainesParAxe();
+  if (!choix.length) {
     return h('section', { class: 'carte' }, h('h2', {}, 'Tout est fait ✓'),
-      h('p', {}, 'La prochaine fiche sera préparée ce soir, adaptée à tes réponses.'),
-      enAttente ? h('p', { class: 'note-douce' }, `${enAttente} résultat(s) en attente d’envoi (réseau).`) : null,
+      h('p', {}, 'Les prochaines fiches seront préparées ce soir, adaptées à tes réponses.'), noteAttente,
       etat.cache.etat?.message ? h('p', { class: 'note-douce' }, etat.cache.etat.message) : null);
   }
-  return vueFiche(n, false);
+  return h('div', {},
+    h('section', { class: 'carte' }, h('h2', {}, 'Quelle fiche aujourd’hui00a0?'),
+      h('p', { class: 'note-douce' }, 'Une fiche par domaine t’attend. La première est celle que je te conseille.'),
+      h('ul', { class: 'liste choix-fiches' }, choix.map((n, i) => {
+        const d = etat.cache.fiches[n].data;
+        const axe = AXES[d.axe] || { nom: d.axe, icone: '•' };
+        const son = demandeSon(d);
+        return h('li', { onclick: () => { etat.ficheOuverte = n; afficher(); window.scrollTo(0, 0); } },
+          h('span', { class: 'icone-axe', 'aria-hidden': 'true' }, axe.icone),
+          h('span', { class: 't' }, h('strong', {}, axe.nom), h('br'), h('span', { class: 'note-douce' }, d.titre)),
+          h('span', { class: 'badges' },
+            i === 0 ? h('span', { class: 'pastille attente' }, 'conseillée') : null,
+            h('span', { class: `pastille ${son ? 'son' : ''}` }, son ? '🔊 son' : '🔇 sans son')));
+      })), noteAttente));
 }
+// La prochaine fiche non faite de chaque axe, dans l'ordre de priorité (= ordre des numéros).
+function prochainesParAxe() {
+  const f = faits(), vus = new Set(), res = [];
+  for (const n of numerosFiches()) {
+    const axe = etat.cache.fiches[n].data?.axe;
+    if (f.has(n) || vus.has(axe)) continue;
+    vus.add(axe); res.push(n);
+  }
+  return res;
+}
+const demandeSon = (fiche) => fiche.blocs.some((b) => b.type === 'oreille' || b.type === 'rythme');
 
 function vueProgres() {
   const e = etat.cache.etat;
@@ -542,13 +570,13 @@ function vueProgres() {
 
 function vueHistorique() {
   const f = faits();
-  const auj = ficheDuJour();
+  const enCours = new Set(prochainesParAxe());
   const nums = numerosFiches().reverse();
   if (!nums.length) return h('section', { class: 'carte' }, h('p', {}, 'Aucune fiche pour l’instant.'));
   return h('section', { class: 'carte' }, h('h3', {}, 'Toutes les fiches'),
     h('ul', { class: 'liste' }, nums.map((n) => {
       const d = etat.cache.fiches[n].data;
-      const statut = f.has(n) ? h('span', { class: 'pastille fait' }, 'faite') : n === auj ? h('span', { class: 'pastille attente' }, 'aujourd’hui') : h('span', { class: 'pastille' }, 'à venir');
+      const statut = f.has(n) ? h('span', { class: 'pastille fait' }, 'faite') : enCours.has(n) ? h('span', { class: 'pastille attente' }, 'à faire') : h('span', { class: 'pastille' }, 'à venir');
       return h('li', { style: 'cursor:pointer', onclick: () => { etat.ficheOuverte = n; aller('fiche'); } },
         h('span', { class: 'num' }, `#${n}`), h('span', { class: 't' }, `${AXES[d.axe]?.icone || ''} ${d.titre}`), statut);
     })));

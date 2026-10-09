@@ -153,3 +153,9 @@ label { display: block; font-size: .9rem; color: var(--doux); margin: 10px 0 4px
 
 .note-douce { color: var(--doux); font-size: .9rem; }
 .erreur { color: var(--faux); }
+
+/* Choix de la fiche du jour */
+.choix-fiches li { cursor: pointer; }
+.icone-axe { font-size: 1.5rem; width: 1.6em; text-align: center; }
+.badges { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
+.pastille.son { background: var(--accent-doux); }
