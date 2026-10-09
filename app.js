@@ -512,7 +512,7 @@ function vueAccueilFiche() {
       etat.cache.etat?.message ? h('p', { class: 'note-douce' }, etat.cache.etat.message) : null);
   }
   return h('div', {},
-    h('section', { class: 'carte' }, h('h2', {}, 'Quelle fiche aujourd’hui00a0?'),
+    h('section', { class: 'carte' }, h('h2', {}, 'Quelle fiche aujourd’hui ?'),
       h('p', { class: 'note-douce' }, 'Une fiche par domaine t’attend. La première est celle que je te conseille.'),
       h('ul', { class: 'liste choix-fiches' }, choix.map((n, i) => {
         const d = etat.cache.fiches[n].data;
