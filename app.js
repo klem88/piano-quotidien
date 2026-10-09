@@ -664,6 +664,23 @@ function afficher() {
   const contenu = { fiche: vueAccueilFiche, progres: vueProgres, historique: vueHistorique, reglages: vueReglages }[etat.vue]();
   vue.replaceChildren(contenu);
   document.querySelectorAll('.onglets button').forEach((b) => b.classList.toggle('actif', b.dataset.vue === etat.vue));
+  garderEcranAllume(etat.vue === 'fiche' && etat.ficheOuverte != null);
+}
+
+// Écran allumé pendant une fiche (API Wake Lock) ; le verrou saute quand la page est cachée,
+// on le reprend au retour.
+let verrouEcran = null, ecranVoulu = false;
+async function garderEcranAllume(oui) {
+  ecranVoulu = oui;
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (oui && !verrouEcran && document.visibilityState === 'visible') {
+      verrouEcran = await navigator.wakeLock.request('screen');
+      verrouEcran.addEventListener('release', () => { verrouEcran = null; });
+    } else if (!oui && verrouEcran) {
+      await verrouEcran.release(); verrouEcran = null;
+    }
+  } catch { verrouEcran = null; /* refusé (batterie faible…) : tant pis */ }
 }
 
 document.querySelectorAll('.onglets button').forEach((b) => b.addEventListener('click', () => {
@@ -671,6 +688,10 @@ document.querySelectorAll('.onglets button').forEach((b) => b.addEventListener('
   aller(b.dataset.vue);
   window.scrollTo(0, 0);
 }));
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && config().jeton) synchroniser(); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  if (ecranVoulu) garderEcranAllume(true);
+  if (config().jeton) synchroniser();
+});
 afficher();
 if (config().jeton || DEMO) synchroniser(); else indiquer('Non configuré');
