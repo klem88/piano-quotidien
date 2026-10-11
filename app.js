@@ -1,5 +1,5 @@
 'use strict';
-/* Piano quotidien : affiche la fiche du jour, enregistre les réponses dans le dépôt GitHub privé. */
+/* Piano et guitare quotidiens : affiche la fiche du jour, enregistre les réponses dans le dépôt GitHub privé. */
 
 // ---------- Stockage local (confort : brouillons, cache, file d'envoi) ----------
 const store = {
@@ -7,19 +7,40 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { /* stockage indisponible */ } },
   del(k) { try { localStorage.removeItem(k); } catch { /* idem */ } },
 };
-const CLE_CONFIG = 'pq-config';
-const CLE_CACHE = 'pq-cache';
-const CLE_FILE = 'pq-file-envoi';
-const cleBrouillon = (n) => `pq-brouillon-${n}`;
-
-const AXES = {
-  lec: { nom: 'Lecture à vue', icone: '🎼' },
-  ore: { nom: 'Oreille', icone: '👂' },
-  ryt: { nom: 'Rythme', icone: '🥁' },
-  har: { nom: 'Harmonie', icone: '🃏' },
-  cla: { nom: 'Clavier', icone: '🎹' },
-  mus: { nom: 'Pièce', icone: '🎶' },
+// Deux programmes dans le même dépôt : le piano à la racine, la guitare dans `guitare/`.
+const INSTRUMENTS = {
+  piano: {
+    titre: 'Piano quotidien', icone: '🎹', dossier: '', prefixe: 'pq-',
+    axes: {
+      lec: { nom: 'Lecture à vue', icone: '🎼' },
+      ore: { nom: 'Oreille', icone: '👂' },
+      ryt: { nom: 'Rythme', icone: '🥁' },
+      har: { nom: 'Harmonie', icone: '🃏' },
+      cla: { nom: 'Clavier', icone: '🎹' },
+      mus: { nom: 'Pièce', icone: '🎶' },
+    },
+  },
+  guitare: {
+    titre: 'Guitare quotidienne', icone: '🎸', dossier: 'guitare/', prefixe: 'pq-guitare-',
+    axes: {
+      gui: { nom: 'Séance', icone: '🎸' },
+      acc: { nom: 'Accords', icone: '✋' },
+      chg: { nom: 'Changements', icone: '⇄' },
+      rmd: { nom: 'Main droite', icone: '🤚' },
+      cha: { nom: 'Chansons', icone: '🎤' },
+    },
+  },
 };
+const CLE_INSTRUMENT = 'pq-instrument';
+let instrument = INSTRUMENTS[store.get(CLE_INSTRUMENT, 'piano')] ? store.get(CLE_INSTRUMENT, 'piano') : 'piano';
+const inst = () => INSTRUMENTS[instrument];
+const CLE_CONFIG = 'pq-config';
+const CLE_FILE = 'pq-file-envoi'; // file commune ; chaque résultat guitare porte `instrument: "guitare"`
+const cleCache = () => `${inst().prefixe}cache`;
+const cleBrouillon = (n) => `${inst().prefixe}brouillon-${n}`;
+const instrumentDe = (r) => r.instrument || 'piano';
+const fileCourante = () => store.get(CLE_FILE, []).filter((r) => instrumentDe(r) === instrument);
+const AXES = new Proxy({}, { get: (_, k) => inst().axes[k] });
 const AUTOEVAL_STANDARD = [{ id: 'global', question: 'Comment ça s’est passé ?', options: [['Sans hésiter', 1], ['Avec hésitations', 0.6], ['Pas réussi', 0.2]] }];
 
 const config = () => ({ proprietaire: 'klem88', depot: 'piano-quotidien-donnees', jeton: '', ...store.get(CLE_CONFIG, {}) });
@@ -58,11 +79,27 @@ async function ecrire(chemin, texte, message) {
 // ---------- État de l'application ----------
 const etat = {
   vue: 'fiche',
-  cache: store.get(CLE_CACHE, { fiches: {}, faits: [], etat: null }),
+  cache: store.get(cleCache(), { fiches: {}, faits: [], etat: null }),
   ficheOuverte: null, // numéro affiché depuis l'historique
   erreur: null,
 };
-const faits = () => new Set([...etat.cache.faits, ...store.get(CLE_FILE, []).map((r) => r.numero)]);
+const faits = () => new Set([...etat.cache.faits, ...fileCourante().map((r) => r.numero)]);
+function changerInstrument(nom) {
+  if (nom === instrument) return;
+  instrument = nom;
+  store.set(CLE_INSTRUMENT, nom);
+  etat.cache = store.get(cleCache(), { fiches: {}, faits: [], etat: null });
+  etat.ficheOuverte = null;
+  majEntete();
+  afficher();
+  window.scrollTo(0, 0);
+  if (config().jeton || DEMO) synchroniser();
+}
+function majEntete() {
+  document.title = inst().titre;
+  document.querySelector('.entete h1').textContent = inst().titre;
+  document.querySelectorAll('.instruments button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.instrument === instrument)));
+}
 const numerosFiches = () => Object.keys(etat.cache.fiches).map(Number).sort((a, b) => a - b);
 const ficheDuJour = () => numerosFiches().find((n) => !faits().has(n));
 
@@ -70,12 +107,14 @@ const ficheDuJour = () => numerosFiches().find((n) => !faits().has(n));
 const DEMO = new URLSearchParams(location.search).has('demo');
 async function synchroniserDemo() {
   const lire = async (u) => { const r = await fetch(u, { cache: 'no-store' }); return r.ok ? r.json() : null; };
+  const dossier = `../donnees/${inst().dossier}`;
   const fiches = {};
-  for (let n = 1; ; n++) { const d = await lire(`../donnees/fiches/${pad(n)}.json`); if (!d) break; fiches[n] = { sha: 'demo', data: d }; }
-  const demoFaits = store.get('pq-demo-faits', []);
-  for (const r of store.get(CLE_FILE, [])) demoFaits.push(r.numero);
-  store.set('pq-demo-faits', demoFaits); store.set(CLE_FILE, []);
-  etat.cache = { fiches, faits: demoFaits, etat: await lire('../donnees/etat.json') };
+  for (let n = 1; ; n++) { const d = await lire(`${dossier}fiches/${pad(n)}.json`); if (!d) break; fiches[n] = { sha: 'demo', data: d }; }
+  const cleFaits = `${inst().prefixe}demo-faits`;
+  const demoFaits = store.get(cleFaits, []);
+  for (const r of fileCourante()) demoFaits.push(r.numero);
+  store.set(cleFaits, demoFaits); store.set(CLE_FILE, store.get(CLE_FILE, []).filter((r) => instrumentDe(r) !== instrument));
+  etat.cache = { fiches, faits: demoFaits, etat: await lire(`${dossier}etat.json`) };
   indiquer('Mode démo');
   afficher();
 }
@@ -83,21 +122,23 @@ async function synchroniserDemo() {
 async function synchroniser() {
   if (DEMO) return synchroniserDemo();
   indiquer('Synchronisation…');
+  const pour = instrument, d = inst().dossier;
   try {
     await viderFile();
-    const [liste, resultats, etatDistant] = await Promise.all([gh('fiches'), gh('resultats'), lireJson('etat.json')]);
+    const [liste, resultats, etatDistant] = await Promise.all([gh(`${d}fiches`), gh(`${d}resultats`), lireJson(`${d}etat.json`)]);
     const fiches = {};
     for (const f of (liste || []).filter((f) => /^\d+\.json$/.test(f.name))) {
       const n = parseInt(f.name, 10);
       const ancien = etat.cache.fiches[n];
-      fiches[n] = ancien && ancien.sha === f.sha ? ancien : { sha: f.sha, data: await lireJson(`fiches/${f.name}`) };
+      fiches[n] = ancien && ancien.sha === f.sha ? ancien : { sha: f.sha, data: await lireJson(`${d}fiches/${f.name}`) };
     }
+    if (pour !== instrument) return; // l'élève a changé d'instrument pendant la synchronisation
     etat.cache = {
       fiches,
       faits: (resultats || []).filter((f) => /^\d+\.json$/.test(f.name)).map((f) => parseInt(f.name, 10)),
       etat: etatDistant,
     };
-    store.set(CLE_CACHE, etat.cache);
+    store.set(cleCache(), etat.cache);
     etat.erreur = null;
     indiquer(`À jour · ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`);
   } catch (e) {
@@ -111,13 +152,15 @@ async function viderFile() {
   const file = store.get(CLE_FILE, []);
   const restant = [];
   for (const r of file) {
+    const ins = instrumentDe(r);
     try {
-      await ecrire(`resultats/${pad(r.numero)}.json`, JSON.stringify(r, null, 2) + '\n', `Résultat de la fiche ${r.numero}`);
-      etat.cache.faits.push(r.numero);
+      await ecrire(`${INSTRUMENTS[ins].dossier}resultats/${pad(r.numero)}.json`, JSON.stringify(r, null, 2) + '\n',
+        `Résultat de la fiche ${ins === 'piano' ? '' : `${ins} `}${r.numero}`);
+      if (ins === instrument) etat.cache.faits.push(r.numero);
     } catch { restant.push(r); }
   }
   store.set(CLE_FILE, restant);
-  store.set(CLE_CACHE, etat.cache);
+  store.set(cleCache(), etat.cache);
 }
 function indiquer(t) { document.getElementById('etat-sync').textContent = t; }
 
@@ -188,21 +231,23 @@ function abcEtapes(etapes, duree) {
   }).join(' ');
   return `X:1\nL:1/4\nQ:1/4=${Math.round(60 / duree)}\nK:C\n${corps} |]`;
 }
-async function jouerEtapes(etapes, duree = 1) {
+// programme MIDI : 0 = piano, 24 = guitare classique (cordes nylon)
+async function jouerEtapes(etapes, duree = 1, programme = 0) {
   const c = audio();
   if (synthOreille) { synthOreille.stop(); synthOreille = null; }
   if (sortie) { sortie.gain.setTargetAtTime(0, c.currentTime, 0.02); sortie = null; }
   if (window.ABCJS?.synth?.supportsAudio()) {
     try {
       const abc = abcEtapes(etapes, duree);
-      let s = synthsPrets.get(abc);
+      const cle = `${programme}|${abc}`;
+      let s = synthsPrets.get(cle);
       if (!s) {
         const cache = document.getElementById('abc-cache') || document.body.appendChild(h('div', { id: 'abc-cache', hidden: true }));
         const tune = ABCJS.renderAbc(cache, abc)[0];
         s = new ABCJS.synth.CreateSynth();
-        await s.init({ audioContext: c, visualObj: tune, options: { program: 0 } });
+        await s.init({ audioContext: c, visualObj: tune, options: { program: programme } });
         await s.prime();
-        synthsPrets.set(abc, s);
+        synthsPrets.set(cle, s);
       }
       s.start();
       synthOreille = s;
@@ -314,6 +359,148 @@ function metronome(tempoInitial, temps) {
 }
 const arretsSurNavigation = [];
 
+// ---------- Guitare : diagrammes d'accords, grilles, motifs de main droite ----------
+// Cordes notées de la 6e (mi grave) à la 1re (mi aigu). `cases` : x = non jouée, 0 = à vide.
+// `doigts` : 1 index, 2 majeur, 3 annulaire, 4 auriculaire. `barre` : cordes numérotées 1 → 6 depuis le grave.
+const ACCORDS = {
+  Em: { cases: '022000', doigts: '023000' },
+  Em7: { cases: '022030', doigts: '012030' },
+  E: { cases: '022100', doigts: '023100' },
+  E7: { cases: '020100', doigts: '020100' },
+  Am: { cases: 'x02210', doigts: 'x02310' },
+  Am7: { cases: 'x02010', doigts: 'x02010' },
+  A: { cases: 'x02220', doigts: 'x01230' },
+  A7: { cases: 'x02020', doigts: 'x02030' },
+  Asus2: { cases: 'x02200', doigts: 'x01200' },
+  Amaj7: { cases: 'x02120', doigts: 'x02130' },
+  D: { cases: 'xx0232', doigts: 'xx0132' },
+  Dm: { cases: 'xx0231', doigts: 'xx0231' },
+  D7: { cases: 'xx0212', doigts: 'xx0213' },
+  Dm7: { cases: 'xx0211', doigts: 'xx0211', barre: { case: 1, de: 5, a: 6 } },
+  Dsus2: { cases: 'xx0230', doigts: 'xx0130' },
+  Dsus4: { cases: 'xx0233', doigts: 'xx0134' },
+  Dmaj7: { cases: 'xx0222', doigts: 'xx0123' },
+  G: { cases: '320003', doigts: '210003' },
+  G7: { cases: '320001', doigts: '320001' },
+  Gmaj7: { cases: '320002', doigts: '320001' },
+  C: { cases: 'x32010', doigts: 'x32010' },
+  C7: { cases: 'x32310', doigts: 'x32410' },
+  Cmaj7: { cases: 'x32000', doigts: 'x32000' },
+  Cadd9: { cases: 'x32033', doigts: 'x21034' },
+  Fmaj7: { cases: 'xx3210', doigts: 'xx3210' },
+  'F (petit)': { cases: 'xx3211', doigts: 'xx3211', barre: { case: 1, de: 5, a: 6 } },
+  F: { cases: '133211', doigts: '134211', barre: { case: 1, de: 1, a: 6 } },
+  'F#m': { cases: '244222', doigts: '134111', barre: { case: 2, de: 1, a: 6 } },
+  B7: { cases: 'x21202', doigts: 'x21304' },
+  Bm: { cases: 'x24432', doigts: 'x13421', barre: { case: 2, de: 2, a: 6 } },
+  Bm7b5: { cases: 'x2323x', doigts: 'x1324x' },
+};
+const CORDES_A_VIDE = [40, 45, 50, 55, 59, 64]; // mi2 la2 ré3 sol3 si3 mi4 (MIDI)
+const NOMS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+// Un accord est soit un nom du dictionnaire, soit un objet { nom, cases, doigts?, barre? }.
+function accord(a) {
+  if (typeof a === 'string') return { nom: a, ...(ACCORDS[a] || { cases: 'xxxxxx' }) };
+  return { ...(ACCORDS[a.nom] || {}), ...a };
+}
+const casesDe = (ac) => (Array.isArray(ac.cases) ? ac.cases : [...ac.cases]).map((c) => (c === 'x' ? null : Number(c)));
+function notesAccord(ac) {
+  return casesDe(ac).map((c, i) => (c == null ? null : CORDES_A_VIDE[i] + c)).filter((m) => m != null)
+    .map((m) => `${NOMS[m % 12]}${Math.floor(m / 12) - 1}`);
+}
+// Arpège corde par corde (pour vérifier chaque corde) puis l'accord entier.
+function jouerAccord(ac) {
+  const notes = notesAccord(ac);
+  jouerEtapes([...notes.map((n) => [n]), notes], 0.3, 24);
+}
+function diagramme(a) {
+  const ac = accord(a);
+  const cases = casesDe(ac);
+  const doigts = ac.doigts ? [...ac.doigts] : [];
+  const appuyees = cases.filter((c) => c > 0);
+  const debut = Math.max(...appuyees, 0) > 4 ? Math.min(...appuyees) : 1;
+  const X0 = 22, DX = 16, Y0 = 26, DY = 20, NB = 5;
+  const x = (corde) => X0 + corde * DX;
+  let svg = `<svg viewBox="0 0 116 136" role="img" aria-label="Accord ${echapper(ac.nom)}">`;
+  for (let k = 0; k <= NB; k++) svg += `<line x1="${X0}" x2="${x(5)}" y1="${Y0 + k * DY}" y2="${Y0 + k * DY}" class="frette"/>`;
+  if (debut === 1) svg += `<rect x="${X0 - 1}" y="${Y0 - 4}" width="${5 * DX + 2}" height="5" class="sillet"/>`;
+  else svg += `<text x="${X0 - 8}" y="${Y0 + DY / 2 + 4}" class="num-case">${debut}</text>`;
+  for (let i = 0; i < 6; i++) svg += `<line x1="${x(i)}" x2="${x(i)}" y1="${Y0}" y2="${Y0 + NB * DY}" class="corde"/>`;
+  const yCase = (c) => Y0 + (c - debut + 0.5) * DY;
+  if (ac.barre) {
+    const { case: c, de, a: jusqua } = ac.barre;
+    svg += `<rect x="${x(de - 1) - 7}" y="${yCase(c) - 7}" width="${(jusqua - de) * DX + 14}" height="14" rx="7" class="point"/>`;
+  }
+  cases.forEach((c, i) => {
+    if (c == null) svg += `<text x="${x(i)}" y="${Y0 - 9}" class="marque">×</text>`;
+    else if (c === 0) svg += `<circle cx="${x(i)}" cy="${Y0 - 13}" r="4" class="vide"/>`;
+    else {
+      svg += `<circle cx="${x(i)}" cy="${yCase(c)}" r="7" class="point"/>`;
+      if (doigts[i] && doigts[i] !== '0' && doigts[i] !== 'x') svg += `<text x="${x(i)}" y="${yCase(c) + 4}" class="doigt">${doigts[i]}</text>`;
+    }
+  });
+  svg += '</svg>';
+  return h('button', { class: 'diagramme', title: 'Écouter corde par corde', onclick: () => jouerAccord(ac) },
+    h('span', { class: 'nom-accord' }, ac.nom), h('span', { html: svg }));
+}
+const rangeeDiagrammes = (liste) => h('div', { class: 'diagrammes' }, liste.map(diagramme));
+
+// Motif de main droite : une case par subdivision, le compte au-dessus.
+function vueMotif(r) {
+  return h('div', { class: 'motif' },
+    r.titre ? h('div', { class: 'note-douce' }, r.titre) : null,
+    h('div', { class: 'motif-grille', style: `grid-template-columns:repeat(${r.motif.length},1fr)` },
+      r.motif.map((_, i) => h('span', { class: 'compte' }, r.comptes?.[i] ?? '')),
+      r.motif.map((m) => h('span', { class: `geste ${m.trim() ? '' : 'silence'}` }, m.trim() || '·'))),
+    r.legende ? h('div', { class: 'legende' }, r.legende) : null);
+}
+// Grille d'accords : une case par mesure ; « Dm Am » = deux accords dans la mesure.
+function vueGrille(sections) {
+  return h('div', { class: 'grille' }, sections.map((s) => h('div', { class: 'section-grille' },
+    h('div', { class: 'titre-section' }, s.section || '', s.repete > 1 ? h('span', { class: 'note-douce' }, ` ×${s.repete}`) : null),
+    s.texte ? h('div', { class: 'note-douce repere' }, s.texte) : null,
+    h('div', { class: 'mesures' }, s.mesures.map((m) => h('span', { class: 'mesure' }, m))))));
+}
+
+// Changements en une minute (méthode « one-minute changes ») : compter les passages d'un accord à l'autre.
+function vueChangements(bloc, numero, b) {
+  const sec = h('section', { class: 'carte' });
+  const cle = `${bloc.id}:changements`;
+  const nomPaire = bloc.paire.map((a) => accord(a).nom).join(' ⇄ ');
+  const record = etat.cache.etat?.changements?.[bloc.paire.map((a) => accord(a).nom).join('-')];
+  sec.append(h('h3', {}, bloc.titre || `Changements ${nomPaire}`));
+  if (bloc.consigne) sec.append(markdown(bloc.consigne));
+  sec.append(rangeeDiagrammes(bloc.paire));
+  sec.append(h('p', { class: 'note-douce' }, `Objectif : ${bloc.objectif} changements en 1 minute${record != null ? ` · ton record : ${record}` : ''}.`));
+  let reste = 60, minuterie = null;
+  const btn = h('button', { class: 'bouton minuteur principal', onclick: () => {
+    if (minuterie) return;
+    jouerEtapes([['A5']], 0.3);
+    minuterie = setInterval(() => {
+      reste--; btn.textContent = `⏱ ${reste} s`;
+      if (reste <= 0) { clearInterval(minuterie); minuterie = null; reste = 60; btn.textContent = '⏱ Recommencer'; jouerEtapes([['A5'], ['A5']], 0.25); }
+    }, 1000);
+    arretsSurNavigation.push(() => clearInterval(minuterie));
+  } }, '⏱ Lancer la minute');
+  sec.append(h('div', { class: 'rangee' }, btn));
+  const zone = h('div', { class: 'autoeval' });
+  const rendre = () => {
+    const actuel = b.items[cle];
+    const champ = h('input', { type: 'number', inputmode: 'numeric', min: '0', max: '200', value: actuel?.valeur ?? '', 'aria-label': 'Nombre de changements', class: 'nombre' });
+    zone.replaceChildren(
+      h('div', { class: 'critere' }, h('div', { class: 'q' }, 'Combien de changements propres ? (chaque passage compte, aller comme retour)'),
+        h('div', { class: 'rangee' }, champ, h('button', { class: 'bouton', onclick: () => {
+          const n = parseInt(champ.value, 10);
+          if (Number.isNaN(n) || n < 0) return;
+          b.items[cle] = { id: cle, axe: bloc.axe || 'chg', niveau: bloc.niveau, theme: nomPaire, type: 'mesure', valeur: n, objectif: bloc.objectif, score: Math.min(1, Math.round((100 * n) / bloc.objectif) / 100), reponse: String(n) };
+          sauver(numero, b); rendre();
+        } }, 'Noter'),
+        actuel?.valeur != null ? h('span', { class: 'note-douce' }, `noté : ${actuel.valeur}`) : null)));
+  };
+  rendre();
+  sec.append(zone);
+  return sec;
+}
+
 // ---------- Fiche ----------
 function brouillon(n) { return store.get(cleBrouillon(n), { debut: new Date().toISOString(), items: {}, ressenti: null, note: '' }); }
 function sauver(n, b) { store.set(cleBrouillon(n), b); }
@@ -340,7 +527,8 @@ function vueBloc(bloc, i, numero, b) {
     case 'cartes': case 'oreille': return vueQuestions(bloc, numero, b);
     case 'partition': return vueJeu(bloc, numero, b, 'partition');
     case 'rythme': return vueJeu(bloc, numero, b, 'rythme');
-    case 'tache': return vueJeu(bloc, numero, b, 'tache');
+    case 'tache': case 'accords': case 'chanson': return vueJeu(bloc, numero, b, 'tache');
+    case 'changements': return vueChangements(bloc, numero, b);
     default: return h('section', { class: 'carte' }, `Bloc inconnu : ${bloc.type}`);
   }
 }
@@ -396,7 +584,7 @@ function vueQuestions(bloc, numero, b) {
       explication.append(h('div', { class: 'rangee' }, h('button', { class: 'bouton principal', onclick: suivant }, index === items.length - 1 ? 'Terminer' : 'Suivante →')));
     };
     function repondre(c) {
-      b.items[it.id] = { id: it.id, niveau: it.niveau, theme: it.theme, type: 'carte', correct: c === it.reponse, score: c === it.reponse ? 1 : 0, reponse: c };
+      b.items[it.id] = { id: it.id, axe: it.axe || bloc.axe, niveau: it.niveau, theme: it.theme, type: 'carte', correct: c === it.reponse, score: c === it.reponse ? 1 : 0, reponse: c };
       sauver(numero, b);
       montrer(c);
     }
@@ -410,6 +598,9 @@ function vueJeu(bloc, numero, b, genre) {
   const sec = h('section', { class: 'carte' });
   sec.append(h('h3', {}, bloc.titre || ''));
   if (bloc.consigne) sec.append(markdown(bloc.consigne));
+  if (bloc.accords?.length) sec.append(rangeeDiagrammes(bloc.accords));
+  if (bloc.rythmique) sec.append(vueMotif(bloc.rythmique));
+  if (bloc.grille?.length) sec.append(vueGrille(bloc.grille));
   let objetVisuel = null;
   if (bloc.abc) {
     const papier = h('div', { class: 'papier' });
@@ -460,7 +651,7 @@ function vueAutoeval(bloc, numero, b) {
           class: actuel?.reponse === label && !pasTente ? 'choisi' : '',
           onclick: () => {
             delete b.items[`${bloc.id}:pas-tente`];
-            b.items[cle] = { id: cle, niveau: bloc.niveau, theme: bloc.titre, type: 'autoeval', score, reponse: label };
+            b.items[cle] = { id: cle, axe: bloc.axe, niveau: bloc.niveau, theme: bloc.titre, type: 'autoeval', score, reponse: label };
             sauver(numero, b); rendre();
           },
         }, label)))));
@@ -469,7 +660,7 @@ function vueAutoeval(bloc, numero, b) {
       class: pasTente ? 'choisi' : '',
       onclick: () => {
         for (const cr of criteres) delete b.items[`${bloc.id}:${cr.id}`];
-        b.items[`${bloc.id}:pas-tente`] = { id: `${bloc.id}:pas-tente`, niveau: bloc.niveau, theme: bloc.titre, type: 'autoeval', score: null, reponse: 'pas tenté' };
+        b.items[`${bloc.id}:pas-tente`] = { id: `${bloc.id}:pas-tente`, axe: bloc.axe, niveau: bloc.niveau, theme: bloc.titre, type: 'autoeval', score: null, reponse: 'pas tenté' };
         sauver(numero, b); rendre();
       },
     }, 'Pas tenté')));
@@ -503,7 +694,8 @@ async function terminer(numero, fiche, b) {
     debut: b.debut, fin: new Date().toISOString(),
     items: Object.values(b.items), ressenti: b.ressenti, note: b.note || '',
   };
-  store.set(CLE_FILE, [...store.get(CLE_FILE, []).filter((r) => r.numero !== numero), resultat]);
+  if (instrument !== 'piano') resultat.instrument = instrument;
+  store.set(CLE_FILE, [...store.get(CLE_FILE, []).filter((r) => r.numero !== numero || instrumentDe(r) !== instrument), resultat]);
   store.del(cleBrouillon(numero));
   etat.ficheOuverte = null;
   afficher();
@@ -524,27 +716,27 @@ function vueAccueilFiche() {
       h('button', { class: 'bouton', style: 'margin-top:6px', onclick: () => { etat.ficheOuverte = null; afficher(); window.scrollTo(0, 0); } }, '← Choisir une autre fiche'),
       vueFiche(etat.ficheOuverte, faits().has(etat.ficheOuverte)));
   }
-  const enAttente = store.get(CLE_FILE, []).length;
+  const enAttente = fileCourante().length;
   const noteAttente = enAttente ? h('p', { class: 'note-douce' }, `${enAttente} résultat(s) en attente d’envoi (réseau).`) : null;
   const choix = prochainesParAxe();
   if (!choix.length) {
     return h('section', { class: 'carte' }, h('h2', {}, 'Tout est fait ✓'),
-      h('p', {}, 'Les prochaines fiches seront préparées ce soir, adaptées à tes réponses.'), noteAttente,
+      h('p', {}, `${instrument === 'piano' ? 'Les prochaines fiches seront préparées' : 'La prochaine séance sera préparée'} ce soir, adaptée à tes réponses.`), noteAttente,
       etat.cache.etat?.message ? h('p', { class: 'note-douce' }, etat.cache.etat.message) : null);
   }
   return h('div', {},
-    h('section', { class: 'carte' }, h('h2', {}, 'Quelle fiche aujourd’hui ?'),
-      h('p', { class: 'note-douce' }, 'Une fiche par domaine t’attend. La première est celle que je te conseille.'),
+    h('section', { class: 'carte' }, h('h2', {}, instrument !== 'piano' ? 'Ta séance du jour' : 'Quelle fiche aujourd’hui ?'),
+      h('p', { class: 'note-douce' }, instrument === 'piano' ? 'Une fiche par domaine t’attend. La première est celle que je te conseille.' : '10 minutes, guitare accordée avec ton app.'),
       h('ul', { class: 'liste choix-fiches' }, choix.map((n, i) => {
         const d = etat.cache.fiches[n].data;
         const axe = AXES[d.axe] || { nom: d.axe, icone: '•' };
-        const son = demandeSon(d);
+        const son = instrument === 'piano' ? demandeSon(d) : null;
         return h('li', { onclick: () => { etat.ficheOuverte = n; afficher(); window.scrollTo(0, 0); } },
           h('span', { class: 'icone-axe', 'aria-hidden': 'true' }, axe.icone),
           h('span', { class: 't' }, h('strong', {}, axe.nom), h('br'), h('span', { class: 'note-douce' }, d.titre)),
           h('span', { class: 'badges' },
             i === 0 ? h('span', { class: 'pastille attente' }, 'conseillée') : null,
-            h('span', { class: `pastille ${son ? 'son' : ''}` }, son ? '🔊 son' : '🔇 sans son')));
+            son == null ? null : h('span', { class: `pastille ${son ? 'son' : ''}` }, son ? '🔊 son' : '🔇 sans son')));
       })), noteAttente));
 }
 // La prochaine fiche non faite de chaque axe, dans l'ordre de priorité (= ordre des numéros).
@@ -572,7 +764,7 @@ function vueProgres() {
       h('div', { class: 'echelle', 'aria-hidden': 'true' }, Array.from({ length: 10 }, (_, k) =>
         h('i', { class: [niv != null && k < niv ? 'plein' : '', ax.cible === k + 1 ? 'cible' : ''].join(' ') })))));
   }
-  sec.append(h('p', { class: 'legende' }, 'Le carré encadré marque l’objectif de juin.'));
+  if (Object.values(e.axes || {}).some((ax) => ax.cible)) sec.append(h('p', { class: 'legende' }, 'Le carré encadré marque l’objectif de juin.'));
   racine.append(sec);
   const nbFaits = faits().size;
   const rev = (e.revisions || []).length;
@@ -626,7 +818,7 @@ function vueReglages() {
     } }, 'Enregistrer et tester')), msg);
 
   const exp = h('section', { class: 'carte' }, h('h3', {}, 'Exporter mes données'),
-    h('p', { class: 'note-douce' }, 'Télécharge tout (fiches, résultats, état, journal, curriculum) dans un seul fichier JSON. Le dépôt GitHub en contient déjà une copie complète.'),
+    h('p', { class: 'note-douce' }, `Télécharge tout le programme ${instrument === 'piano' ? 'piano' : 'guitare'} (fiches, résultats, état, journal, curriculum) dans un seul fichier JSON. Le dépôt GitHub en contient déjà une copie complète.`),
     h('div', { class: 'rangee' }, h('button', { class: 'bouton', onclick: exporter }, '⬇ Exporter')));
   return h('div', {}, sec, exp);
 }
@@ -634,20 +826,22 @@ function vueReglages() {
 async function exporter() {
   indiquer('Export…');
   try {
-    const [fiches, resultats] = await Promise.all([gh('fiches'), gh('resultats')]);
+    const d = inst().dossier;
+    const [fiches, resultats] = await Promise.all([gh(`${d}fiches`), gh(`${d}resultats`)]);
     const lire = async (dossier, liste) => Object.fromEntries(await Promise.all((liste || []).filter((f) => f.name.endsWith('.json'))
-      .map(async (f) => [f.name, await lireJson(`${dossier}/${f.name}`)])));
+      .map(async (f) => [f.name, await lireJson(`${d}${dossier}/${f.name}`)])));
     const donnees = {
       exporte_le: new Date().toISOString(),
-      etat: await lireJson('etat.json'),
-      curriculum: await gh('curriculum.md', { brut: true }),
-      journal: await gh('journal.md', { brut: true }),
+      instrument,
+      etat: await lireJson(`${d}etat.json`),
+      curriculum: await gh(`${d}curriculum.md`, { brut: true }),
+      journal: await gh(`${d}journal.md`, { brut: true }),
       fiches: await lire('fiches', fiches),
       resultats: await lire('resultats', resultats),
-      en_attente: store.get(CLE_FILE, []),
+      en_attente: fileCourante(),
     };
     const url = URL.createObjectURL(new Blob([JSON.stringify(donnees, null, 2)], { type: 'application/json' }));
-    h('a', { href: url, download: `piano-quotidien-${new Date().toISOString().slice(0, 10)}.json` }).click();
+    h('a', { href: url, download: `${instrument}-quotidien-${new Date().toISOString().slice(0, 10)}.json` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
     indiquer('Export prêt ✓');
   } catch (e) { indiquer(`Export impossible (${e.message})`); }
@@ -684,6 +878,8 @@ async function garderEcranAllume(oui) {
   } catch { verrouEcran = null; /* refusé (batterie faible…) : tant pis */ }
 }
 
+document.querySelectorAll('.instruments button').forEach((b) => b.addEventListener('click', () => changerInstrument(b.dataset.instrument)));
+majEntete();
 document.querySelectorAll('.onglets button').forEach((b) => b.addEventListener('click', () => {
   if (b.dataset.vue === 'fiche' && etat.vue === 'fiche') etat.ficheOuverte = null;
   aller(b.dataset.vue);

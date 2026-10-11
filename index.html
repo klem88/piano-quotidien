@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Piano quotidien</title>
-  <meta name="description" content="Une fiche de 10 minutes par jour pour progresser au piano : lecture, oreille, rythme, harmonie.">
+  <meta name="description" content="Une fiche de 10 minutes par jour pour progresser au piano et à la guitare.">
   <meta name="theme-color" content="#f6f1e7" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#1c1a17" media="(prefers-color-scheme: dark)">
   <link rel="manifest" href="manifest.webmanifest">
@@ -19,6 +19,10 @@
     <h1>Piano quotidien</h1>
     <span id="etat-sync" class="sync" aria-live="polite"></span>
   </header>
+  <div class="instruments" role="group" aria-label="Instrument">
+    <button data-instrument="piano" aria-pressed="true">🎹 Piano</button>
+    <button data-instrument="guitare" aria-pressed="false">🎸 Guitare</button>
+  </div>
   <main id="vue"></main>
   <nav class="onglets" aria-label="Navigation">
     <button data-vue="fiche" class="actif"><span aria-hidden="true">✦</span>Aujourd'hui</button>

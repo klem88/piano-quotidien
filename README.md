@@ -1,6 +1,7 @@
 # Piano quotidien
 
-Une fiche de 10 minutes par jour pour progresser au piano (lecture, oreille, rythme, harmonie, clavier).
+Une fiche de 10 minutes par jour pour progresser au piano (lecture, oreille, rythme, harmonie, clavier),
+et une séance de 10 minutes de guitare (accords, changements, main droite, chansons). Le bouton en haut choisit l'instrument.
 Page : https://klem88.github.io/piano-quotidien/
 
 Le site ne contient que du code. Les fiches et les résultats sont dans le dépôt privé `piano-quotidien-donnees`, lu et écrit via l’API GitHub avec un jeton à accès précis stocké sur le téléphone.
