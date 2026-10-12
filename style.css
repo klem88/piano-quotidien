@@ -205,3 +205,13 @@ label { display: block; font-size: .9rem; color: var(--doux); margin: 10px 0 4px
   padding: 8px 4px; text-align: center; font-weight: 700; font-size: 1.05rem; word-spacing: .5em;
 }
 input.nombre { width: 6em; font: inherit; color: inherit; background: var(--fond); border: 1px solid var(--trait); border-radius: 10px; padding: 9px 10px; }
+
+/* Guitare : basses du pouce (F = fondamentale, Q = quinte) */
+.diagramme .point.basse { fill: var(--bon); }
+.diagramme .vide.basse { fill: var(--bon); stroke: var(--bon); }
+.diagramme .basse-hors { fill: none; stroke: var(--bon); stroke-width: 2; stroke-dasharray: 3 2; }
+.diagramme .lettre-basse { fill: var(--bon); font: 700 11px "Atkinson Hyperlegible", sans-serif; text-anchor: middle; }
+.motif-grille + .motif-grille { margin-top: 8px; }
+.motif-grille .etiquette { font-size: .75rem; color: var(--doux); align-self: center; padding-right: 4px; }
+.motif-grille .geste.pouce { color: var(--bon); }
+.motif-grille.serre .geste { font-size: .85rem; padding: 6px 0; letter-spacing: -.02em; }

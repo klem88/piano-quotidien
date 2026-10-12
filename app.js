@@ -420,7 +420,12 @@ function diagramme(a) {
   const debut = Math.max(...appuyees, 0) > 4 ? Math.min(...appuyees) : 1;
   const X0 = 22, DX = 16, Y0 = 26, DY = 20, NB = 5;
   const x = (corde) => X0 + corde * DX;
-  let svg = `<svg viewBox="0 0 116 136" role="img" aria-label="Accord ${echapper(ac.nom)}">`;
+  // Basses du pouce : { "F": [corde, case], "Q": [corde, case] }, cordes numérotées 6 (grave) → 1.
+  // Si une basse tombe hors de l'accord (corde non jouée ou autre case), on la dessine en pointillé.
+  const basses = Object.entries(ac.basses || {}).map(([lettre, [corde, c]]) => ({ lettre, i: 6 - corde, c }));
+  const basseSur = (i, c) => basses.some((b) => b.i === i && b.c === c);
+  const hauteur = basses.length ? 150 : 136;
+  let svg = `<svg viewBox="0 0 116 ${hauteur}" role="img" aria-label="Accord ${echapper(ac.nom)}">`;
   for (let k = 0; k <= NB; k++) svg += `<line x1="${X0}" x2="${x(5)}" y1="${Y0 + k * DY}" y2="${Y0 + k * DY}" class="frette"/>`;
   if (debut === 1) svg += `<rect x="${X0 - 1}" y="${Y0 - 4}" width="${5 * DX + 2}" height="5" class="sillet"/>`;
   else svg += `<text x="${X0 - 8}" y="${Y0 + DY / 2 + 4}" class="num-case">${debut}</text>`;
@@ -431,13 +436,20 @@ function diagramme(a) {
     svg += `<rect x="${x(de - 1) - 7}" y="${yCase(c) - 7}" width="${(jusqua - de) * DX + 14}" height="14" rx="7" class="point"/>`;
   }
   cases.forEach((c, i) => {
-    if (c == null) svg += `<text x="${x(i)}" y="${Y0 - 9}" class="marque">×</text>`;
-    else if (c === 0) svg += `<circle cx="${x(i)}" cy="${Y0 - 13}" r="4" class="vide"/>`;
+    if (c == null) { if (!basses.some((b) => b.i === i)) svg += `<text x="${x(i)}" y="${Y0 - 9}" class="marque">×</text>`; }
+    else if (c === 0) svg += `<circle cx="${x(i)}" cy="${Y0 - 13}" r="4" class="vide ${basseSur(i, 0) ? 'basse' : ''}"/>`;
     else {
-      svg += `<circle cx="${x(i)}" cy="${yCase(c)}" r="7" class="point"/>`;
+      svg += `<circle cx="${x(i)}" cy="${yCase(c)}" r="7" class="point ${basseSur(i, c) ? 'basse' : ''}"/>`;
       if (doigts[i] && doigts[i] !== '0' && doigts[i] !== 'x') svg += `<text x="${x(i)}" y="${yCase(c) + 4}" class="doigt">${doigts[i]}</text>`;
     }
   });
+  for (const b of basses) {
+    if (cases[b.i] !== b.c) {
+      if (b.c === 0) svg += `<circle cx="${x(b.i)}" cy="${Y0 - 13}" r="4" class="vide basse"/>`;
+      else svg += `<circle cx="${x(b.i)}" cy="${yCase(b.c)}" r="6.5" class="basse-hors"/>`;
+    }
+    svg += `<text x="${x(b.i)}" y="${Y0 + NB * DY + 16}" class="lettre-basse">${b.lettre}</text>`;
+  }
   svg += '</svg>';
   return h('button', { class: 'diagramme', title: 'Écouter corde par corde', onclick: () => jouerAccord(ac) },
     h('span', { class: 'nom-accord' }, ac.nom), h('span', { html: svg }));
@@ -445,12 +457,20 @@ function diagramme(a) {
 const rangeeDiagrammes = (liste) => h('div', { class: 'diagrammes' }, liste.map(diagramme));
 
 // Motif de main droite : une case par subdivision, le compte au-dessus.
+// `pouce` (facultatif) ajoute une ligne pour le pouce au-dessus de celle des doigts ;
+// au-delà de 8 cases, le motif passe à la ligne toutes les 8 cases (une mesure en croches).
 function vueMotif(r) {
-  return h('div', { class: 'motif' },
-    r.titre ? h('div', { class: 'note-douce' }, r.titre) : null,
-    h('div', { class: 'motif-grille', style: `grid-template-columns:repeat(${r.motif.length},1fr)` },
-      r.motif.map((_, i) => h('span', { class: 'compte' }, r.comptes?.[i] ?? '')),
-      r.motif.map((m) => h('span', { class: `geste ${m.trim() ? '' : 'silence'}` }, m.trim() || '·'))),
+  const ligne = (cellules, debut, fin, classe) => cellules.slice(debut, fin)
+    .map((m) => h('span', { class: `geste ${classe} ${String(m).trim() ? '' : 'silence'}` }, String(m).trim() || '·'));
+  const blocs = [];
+  for (let d = 0; d < r.motif.length; d += 8) {
+    const f = Math.min(r.motif.length, d + 8);
+    blocs.push(h('div', { class: `motif-grille ${r.pouce ? 'avec-pouce' : ''} ${f - d > 4 ? 'serre' : ''}`, style: `grid-template-columns:${r.pouce ? 'auto ' : ''}repeat(${f - d},1fr)` },
+      r.pouce ? h('span', {}) : null, r.motif.slice(d, f).map((_, i) => h('span', { class: 'compte' }, r.comptes?.[d + i] ?? '')),
+      r.pouce ? [h('span', { class: 'etiquette' }, 'pouce'), ...ligne(r.pouce, d, f, 'pouce')] : null,
+      r.pouce ? h('span', { class: 'etiquette' }, 'doigts') : null, ligne(r.motif, d, f, '')));
+  }
+  return h('div', { class: 'motif' }, r.titre ? h('div', { class: 'note-douce' }, r.titre) : null, blocs,
     r.legende ? h('div', { class: 'legende' }, r.legende) : null);
 }
 // Grille d'accords : une case par mesure ; « Dm Am » = deux accords dans la mesure.
@@ -718,7 +738,8 @@ function vueAccueilFiche() {
   }
   const enAttente = fileCourante().length;
   const noteAttente = enAttente ? h('p', { class: 'note-douce' }, `${enAttente} résultat(s) en attente d’envoi (réseau).`) : null;
-  const choix = prochainesParAxe();
+  // Piano : une fiche par axe. Guitare : toutes les séances non faites, dans l'ordre.
+  const choix = instrument === 'piano' ? prochainesParAxe() : numerosFiches().filter((n) => !faits().has(n));
   if (!choix.length) {
     return h('section', { class: 'carte' }, h('h2', {}, 'Tout est fait ✓'),
       h('p', {}, `${instrument === 'piano' ? 'Les prochaines fiches seront préparées' : 'La prochaine séance sera préparée'} ce soir, adaptée à tes réponses.`), noteAttente,
@@ -733,7 +754,7 @@ function vueAccueilFiche() {
         const son = instrument === 'piano' ? demandeSon(d) : null;
         return h('li', { onclick: () => { etat.ficheOuverte = n; afficher(); window.scrollTo(0, 0); } },
           h('span', { class: 'icone-axe', 'aria-hidden': 'true' }, axe.icone),
-          h('span', { class: 't' }, h('strong', {}, axe.nom), h('br'), h('span', { class: 'note-douce' }, d.titre)),
+          h('span', { class: 't' }, h('strong', {}, instrument === 'piano' ? axe.nom : `${axe.nom} ${n}`), h('br'), h('span', { class: 'note-douce' }, d.titre)),
           h('span', { class: 'badges' },
             i === 0 ? h('span', { class: 'pastille attente' }, 'conseillée') : null,
             son == null ? null : h('span', { class: `pastille ${son ? 'son' : ''}` }, son ? '🔊 son' : '🔇 sans son')));
